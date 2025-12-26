@@ -16,20 +16,80 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        html,
-        body {
+        html, body {
             width: 100%;
             height: 100%;
             overflow: hidden;
             background: #000;
+            font-family: sans-serif;
         }
 
+        /* --- 游戏主界面 --- */
         .game-container {
             position: relative;
             width: 100vw;
             height: 100vh;
+            display: none; /* 等待加载 */
         }
 
+        /* --- 加载页 (黑屏) --- */
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            transition: opacity 0.5s;
+        }
+        
+        .loading-text { 
+            font-size: 1.2rem; 
+            margin-bottom: 20px; 
+            font-weight: bold;
+            color: #ccc;
+        }
+
+        /* 进度条容器 */
+        .loading-bar-box {
+            width: 60%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+        
+        .loading-bar {
+            width: 0%; /* JS控制 */
+            height: 100%;
+            background: #4caf50;
+            transition: width 0.3s ease-out;
+        }
+
+        /* 开始按钮 (加载完才显示) */
+        #start-btn {
+            display: none; /* 默认隐藏 */
+            padding: 12px 40px;
+            font-size: 1.2rem;
+            color: #000;
+            background: #fff;
+            border-radius: 25px;
+            font-weight: bold;
+            box-shadow: 0 0 15px rgba(255,255,255,0.5);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* --- 背景图片 --- */
         .bg-layer {
             position: absolute;
             top: 0;
@@ -42,12 +102,9 @@
             pointer-events: none;
             z-index: 1;
         }
+        .bg-layer.active { opacity: 1; }
 
-        .bg-layer.active {
-            opacity: 1;
-        }
-
-        /* 成功动画容器 */
+        /* --- 动画容器 --- */
         #animContainer {
             position: fixed;
             top: 0;
@@ -55,19 +112,17 @@
             width: 100%;
             height: 100%;
             z-index: 999;
-            display: none;
             pointer-events: none;
-            background: rgba(0,0,0,0.01); /* 微弱背景防止点击穿透 */
+            display: none;
         }
-
-        /* 动图样式 */
-        #animContainer img {
+        #anim-player {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: block;
         }
 
+        /* --- 选项按钮 --- */
         .select-btn {
             position: absolute;
             color: #fff;
@@ -79,78 +134,72 @@
             background: rgba(255, 255, 255, 0.18);
             backdrop-filter: blur(6px);
             box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-            transition: transform 0.2s;
+            transition: transform 0.1s;
             font-size: 1.2rem;
             z-index: 10;
         }
-
-        .select-btn:active {
-            transform: scale(0.95);
-        }
-
+        .select-btn:active { transform: scale(0.95); background: rgba(255,255,255,0.3); }
+        
         .btn-tissue { bottom: 14%; left: 8%; width: 36%; height: 8%; }
         .btn-carrot { bottom: 14%; right: 8%; width: 36%; height: 8%; }
 
-        .countdown {
-            position: fixed;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 8rem;
-            font-weight: 900;
-            color: #fff;
-            z-index: 998;
-            opacity: 0;
-            pointer-events: none;
-            text-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-            transition: opacity 0.2s ease;
-        }
-        .countdown.show { opacity: 1; }
     </style>
 </head>
 
 <body>
 
-    <div class="game-container">
-        <!-- 静态背景 -->
+    <!-- 加载页 -->
+    <div id="loading-screen">
+        <div class="loading-text" id="loading-text">资源缓冲中...</div>
+        <div class="loading-bar-box">
+            <div class="loading-bar" id="loading-bar"></div>
+        </div>
+        <!-- 这个按钮是解决“自动播放声音失败”的关键 -->
+        <div id="start-btn" onclick="userClickStart()">点击开始游戏</div>
+    </div>
+
+    <!-- 游戏主界面 -->
+    <div class="game-container" id="game-container">
         <img src="./image/1.png" class="bg-layer active" id="img-normal">
         <img src="./image/2.png" class="bg-layer" id="img-tissue">
         <img src="./image/3.png" class="bg-layer" id="img-carrot">
 
-        <!-- 动画容器 (这里是空的，通过JS插入) -->
-        <div id="animContainer"></div>
+        <div id="animContainer">
+            <img id="anim-player" src="" alt="">
+        </div>
 
-        <!-- 按钮 -->
         <div class="select-btn btn-tissue" onclick="makeChoice('tissue')">选项1</div>
         <div class="select-btn btn-carrot" onclick="makeChoice('carrot')">选项2</div>
-
-        <!-- 倒计时 -->
-        <div id="countdown" class="countdown">3</div>
     </div>
 
     <script>
-        /* ================= 配置 ================= */
-        // 动画文件名 (请确保文件在 video 文件夹下)
+        /* ================= 配置区 ================= */
+        // 你的 WebP 动图路径
         const ANIM_FILE = './video/success.webp'; 
-        const ANIM_DURATION = 3500; // 动画时长(毫秒)
-        /* ======================================= */
+        // 动画播放时长 (毫秒)
+        const ANIM_DURATION = 3500; 
+        // 资源加载超时时间 (超过5秒没下完也强制让进，防止卡在81%)
+        const LOAD_TIMEOUT = 5000; 
+        /* ========================================= */
 
         const els = {
+            loadingScreen: document.getElementById('loading-screen'),
+            loadingText: document.getElementById('loading-text'),
+            loadingBar: document.getElementById('loading-bar'),
+            startBtn: document.getElementById('start-btn'),
+            gameContainer: document.getElementById('game-container'),
             imgs: {
                 normal: document.getElementById('img-normal'),
                 tissue: document.getElementById('img-tissue'),
                 carrot: document.getElementById('img-carrot')
             },
             animContainer: document.getElementById('animContainer'),
-            countdown: document.getElementById('countdown')
+            animPlayer: document.getElementById('anim-player')
         };
 
         let correctAnswer = '';
         let isPlaying = false;
-        
-        // 核心：用于存储下载到内存的动图地址
-        let cachedAnimUrl = null;
+        let cachedAnimBlobUrl = null;
 
         const sounds = {
             tissue: new Audio('./audio/tissue.m4a'),
@@ -158,24 +207,108 @@
             succeed: new Audio('./audio/succeed.m4a')
         };
 
-        // 预加载音频
-        Object.values(sounds).forEach(s => { s.preload = 'auto'; s.load(); });
+        /* --- 1. 智能资源加载器 --- */
+        function initLoader() {
+            let progress = 0;
+            
+            // 假进度条：为了视觉体验，先跑一部分
+            const fakeTimer = setInterval(() => {
+                if(progress < 75) {
+                    progress += Math.random() * 8;
+                    updateUI(progress);
+                }
+            }, 200);
 
-        /* --- 核心优化：Blob 预加载技术 --- */
-        // 网页打开时，立刻去下载动图，并存入内存
-        function preloadAnimation() {
-            fetch(ANIM_FILE)
-                .then(response => response.blob())
-                .then(blob => {
-                    // 生成一个内存链接 (blob:http://....)
-                    cachedAnimUrl = URL.createObjectURL(blob);
-                    console.log("动图已加载入内存:", cachedAnimUrl);
-                })
-                .catch(err => console.error("动图加载失败:", err));
+            // 定义加载任务
+            const loadTasks = [
+                loadAudio(sounds.tissue),
+                loadAudio(sounds.carrot),
+                loadAudio(sounds.succeed),
+                loadWebP(ANIM_FILE)
+            ];
+
+            // 核心修复：Promise.race 竞速机制
+            // 如果 loadTasks 先完成，就正常进入
+            // 如果 timeoutPromise 先完成（5秒到了），就强制进入
+            const timeoutPromise = new Promise(resolve => {
+                setTimeout(() => resolve('timeout'), LOAD_TIMEOUT);
+            });
+
+            Promise.race([Promise.all(loadTasks), timeoutPromise])
+                .then((result) => {
+                    clearInterval(fakeTimer);
+                    updateUI(100);
+
+                    // 如果是超时强进，给个提示（可选）
+                    if(result === 'timeout') {
+                        console.log("加载超时，强制启动游戏");
+                    }
+
+                    // 显示“点击开始”按钮
+                    // (不直接进游戏，为了让用户点击一下屏幕，激活声音权限)
+                    els.loadingText.textContent = "准备就绪";
+                    els.loadingBar.parentElement.style.display = 'none'; // 隐藏进度条
+                    els.startBtn.style.display = 'block';
+                });
         }
-        
-        // 启动预加载
-        preloadAnimation();
+
+        // 更新界面
+        function updateUI(val) {
+            const p = Math.min(100, Math.floor(val));
+            els.loadingBar.style.width = `${p}%`;
+        }
+
+        // 加载音频 (宽松模式：只要加载了元数据就算成功，不卡死)
+        function loadAudio(audio) {
+            return new Promise(resolve => {
+                audio.onloadedmetadata = resolve;
+                audio.onerror = resolve; // 就算错了也放行
+                audio.load();
+                // 已经有缓存
+                if(audio.readyState >= 1) resolve();
+            });
+        }
+
+        // 加载 WebP (内存Blob模式)
+        function loadWebP(url) {
+            return new Promise(resolve => {
+                fetch(url)
+                    .then(res => res.blob())
+                    .then(blob => {
+                        cachedAnimBlobUrl = URL.createObjectURL(blob);
+                        resolve();
+                    })
+                    .catch(() => resolve()); // 错了也放行，大不了不显示
+            });
+        }
+
+        /* --- 2. 用户点击开始 --- */
+        function userClickStart() {
+            // 隐藏加载页
+            els.loadingScreen.style.opacity = '0';
+            setTimeout(() => {
+                els.loadingScreen.style.display = 'none';
+            }, 500);
+
+            // 显示游戏层
+            els.gameContainer.style.display = 'block';
+
+            // 此时用户有过交互，声音权限已解锁，直接开始
+            startGame();
+        }
+
+        /* --- 3. 游戏逻辑 (无倒计时版) --- */
+        function startGame() {
+            // 重置背景
+            switchImage('normal');
+            
+            // 立即开始，不再倒计时
+            isPlaying = true;
+            correctAnswer = Math.random() > 0.5 ? 'tissue' : 'carrot';
+            
+            // 播放题目声音
+            playVoice(correctAnswer);
+        }
 
         function switchImage(type) {
             Object.values(els.imgs).forEach(img => img.classList.remove('active'));
@@ -188,77 +321,43 @@
             const audio = sounds[type];
             if (audio) {
                 audio.currentTime = 0;
-                audio.play().catch(() => {});
+                audio.play().catch(e => console.log('声音播放受限:', e));
             }
         }
 
-        function startCountdown(onFinish) {
-            isPlaying = false;
-            const steps = ['3', '2', '1'];
-            let index = 0;
-            function next() {
-                if (index >= steps.length) {
-                    els.countdown.classList.remove('show');
-                    onFinish && onFinish();
-                    return;
-                }
-                els.countdown.textContent = steps[index];
-                els.countdown.classList.add('show');
-                setTimeout(() => {
-                    els.countdown.classList.remove('show');
-                    index++;
-                    setTimeout(next, 150);
-                }, 500);
-            }
-            next();
-        }
-
-        function startGame() {
-            switchImage('normal');
-            startCountdown(() => {
-                isPlaying = true;
-                correctAnswer = Math.random() > 0.5 ? 'tissue' : 'carrot';
-                playVoice(correctAnswer);
-            });
-        }
-
-        /* --- 极速播放且必动方案 --- */
         function playSuccessEffect() {
             isPlaying = false;
 
-            // 1. 播放声音
             sounds.succeed.currentTime = 0;
             sounds.succeed.play().catch(() => {});
 
-            // 2. 准备动画
-            // 如果内存里有(cachedAnimUrl)，就用内存的；如果没有(还没下完)，就降级用网络链接
-            const urlToUse = cachedAnimUrl || ANIM_FILE;
+            // 播放动画 (优先用内存Blob，没有就用网络链接)
+            const src = cachedAnimBlobUrl || ANIM_FILE;
+            
+            // 强制重置 src 触发重播
+            els.animPlayer.src = '';
+            void els.animPlayer.offsetWidth; // 强行重排
+            els.animPlayer.src = src;
 
-            // 技巧：先清空，再插入一个新的 img 标签
-            // 这会强制浏览器认为这是一个全新的图片，从而从第一帧开始播放
-            els.animContainer.innerHTML = ''; 
-            
-            // 创建新图片
-            const img = new Image();
-            img.src = urlToUse;
-            
-            els.animContainer.appendChild(img);
             els.animContainer.style.display = 'block';
 
-            // 3. 定时结束
             setTimeout(() => {
                 els.animContainer.style.display = 'none';
-                els.animContainer.innerHTML = ''; // 销毁DOM，释放内存
+                els.animPlayer.src = ''; // 释放
                 sounds.succeed.pause();
+                
+                // 动画结束后，立即开启下一轮
                 startGame();
             }, ANIM_DURATION);
         }
 
         function makeChoice(choice) {
             if (!isPlaying) return;
+
             switchImage(choice);
 
             if (choice === correctAnswer) {
+                // 稍微停顿一下再出动画，让用户看清自己选了啥
                 setTimeout(playSuccessEffect, 300);
             } else {
                 playVoice(correctAnswer);
@@ -268,14 +367,9 @@
             }
         }
 
-        /* 初始化交互解锁 */
-        window.addEventListener('click', () => {
-            if (sounds.tissue.currentTime === 0) {
-                Object.values(sounds).forEach(s => s.load());
-            }
-        }, { once: true });
+        // 启动加载器
+        initLoader();
 
-        startGame();
     </script>
 </body>
 </html>
