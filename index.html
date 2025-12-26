@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>蒙题小猫</title>
+    <!-- 禁止浏览器自动嗅探资源 -->
+    <meta http-equiv="x-rim-auto-match" content="none">
+    <link rel="icon" href="./favicon.ico">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* --- 背景图片层 --- */
+        .bg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            transition: opacity 0.1s linear;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .bg-layer.active {
+            opacity: 1;
+        }
+
+        /* --- 核心修改：成功 GIF 层 --- */
+        #successGif {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* 铺满全屏 */
+            z-index: 999;      /* 最高层级 */
+            display: none;     /* 默认隐藏 */
+            pointer-events: none;
+        }
+
+        /* --- 选项按钮 --- */
+        .select-btn {
+            position: absolute;
+            color: #fff;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(6px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+            transition: transform 0.2s;
+            font-size: 1.2rem;
+            z-index: 10;
+        }
+
+        .select-btn:active {
+            transform: scale(0.95);
+        }
+
+        .btn-tissue {
+            bottom: 14%;
+            left: 8%;
+            width: 36%;
+            height: 8%;
+        }
+
+        .btn-carrot {
+            bottom: 14%;
+            right: 8%;
+            width: 36%;
+            height: 8%;
+        }
+
+        /* --- 321 倒计时 --- */
+        .countdown {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8rem;
+            font-weight: 900;
+            color: #fff;
+            z-index: 998;
+            opacity: 0;
+            pointer-events: none;
+            text-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+            transition: opacity 0.2s ease;
+        }
+
+        .countdown.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="game-container">
+
+        <!-- 背景图片 -->
+        <img src="./image/1.png" class="bg-layer active" id="img-normal">
+        <img src="./image/2.png" class="bg-layer" id="img-tissue">
+        <img src="./image/3.png" class="bg-layer" id="img-carrot">
+
+        <!-- 成功动画：改为 GIF -->
+        <!-- 注意：src 留空，通过 JS 动态控制，保证每次从头播放 -->
+        <img id="successGif" src="" alt="Success">
+
+        <!-- 按钮 -->
+        <div class="select-btn btn-tissue" onclick="makeChoice('tissue')">选项1</div>
+        <div class="select-btn btn-carrot" onclick="makeChoice('carrot')">选项2</div>
+
+        <!-- 倒计时 -->
+        <div id="countdown" class="countdown">3</div>
+    </div>
+
+    <script>
+        /* ================= 配置区 ================= */
+        // 请根据你的 gif 实际长度修改这里（单位：毫秒）
+        // 如果你的 gif 是 3 秒，就写 3000
+        const GIF_DURATION = 3000; 
+
+        // 你的 GIF 路径 (根据你的截图)
+        const GIF_PATH = './video/动画.gif';
+        /* ========================================= */
+
+        const els = {
+            imgs: {
+                normal: document.getElementById('img-normal'),
+                tissue: document.getElementById('img-tissue'),
+                carrot: document.getElementById('img-carrot')
+            },
+            gif: document.getElementById('successGif'),
+            countdown: document.getElementById('countdown')
+        };
+
+        let correctAnswer = '';
+        let isPlaying = false;
+
+        /* --- 音频系统 --- */
+        const sounds = {
+            tissue: new Audio('./audio/tissue.m4a'),
+            carrot: new Audio('./audio/carrot.m4a'),
+            succeed: new Audio('./audio/succeed.m4a')
+        };
+
+        // 预加载音频
+        Object.values(sounds).forEach(s => {
+            s.preload = 'auto';
+            s.load();
+        });
+
+        /* --- 游戏逻辑 --- */
+
+        function switchImage(type) {
+            Object.values(els.imgs).forEach(img => img.classList.remove('active'));
+            if (type === 'tissue') els.imgs.tissue.classList.add('active');
+            else if (type === 'carrot') els.imgs.carrot.classList.add('active');
+            else els.imgs.normal.classList.add('active');
+        }
+
+        function playVoice(type) {
+            const audio = sounds[type];
+            if (audio) {
+                audio.currentTime = 0;
+                audio.play().catch(e => console.log('Audio error:', e));
+            }
+        }
+
+        function startCountdown(onFinish) {
+            isPlaying = false;
+            const steps = ['3', '2', '1'];
+            let index = 0;
+
+            function next() {
+                if (index >= steps.length) {
+                    els.countdown.classList.remove('show');
+                    onFinish && onFinish();
+                    return;
+                }
+                els.countdown.textContent = steps[index];
+                els.countdown.classList.add('show');
+
+                setTimeout(() => {
+                    els.countdown.classList.remove('show');
+                    index++;
+                    setTimeout(next, 150);
+                }, 500);
+            }
+            next();
+        }
+
+        function startGame() {
+            switchImage('normal');
+            startCountdown(() => {
+                isPlaying = true;
+                correctAnswer = Math.random() > 0.5 ? 'tissue' : 'carrot';
+                playVoice(correctAnswer);
+            });
+        }
+
+        /* --- 播放成功动画 (GIF 方案) --- */
+        function playSuccessEffect() {
+            isPlaying = false;
+
+            // 1. 播放声音
+            sounds.succeed.currentTime = 0;
+            sounds.succeed.play().catch(() => {});
+
+            // 2. 显示 GIF
+            // 技巧：加一个时间戳 (?t=...) 强制浏览器重新加载 GIF
+            // 这样每次都能从第一帧开始播放，而不是停在最后一帧
+            els.gif.src = GIF_PATH + '?t=' + new Date().getTime();
+            els.gif.style.display = 'block';
+
+            // 3. 定时结束
+            setTimeout(() => {
+                els.gif.style.display = 'none';
+                els.gif.src = ''; // 清空 src 释放内存
+                sounds.succeed.pause();
+                startGame();
+            }, GIF_DURATION);
+        }
+
+        function makeChoice(choice) {
+            if (!isPlaying) return;
+
+            switchImage(choice);
+
+            if (choice === correctAnswer) {
+                setTimeout(playSuccessEffect, 300);
+            } else {
+                playVoice(correctAnswer);
+                setTimeout(() => {
+                    if (isPlaying) switchImage('normal');
+                }, 800);
+            }
+        }
+
+        /* --- 初始化 --- */
+        // 第一次点击解锁所有音频
+        window.addEventListener('click', () => {
+            if (sounds.tissue.currentTime === 0) {
+                Object.values(sounds).forEach(s => s.load());
+            }
+        }, { once: true });
+
+        startGame();
+
+    </script>
+</body>
+
+</html>
