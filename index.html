@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>蒙题小猫</title>
-    <!-- 禁止浏览器自动嗅探资源 -->
     <meta http-equiv="x-rim-auto-match" content="none">
     <link rel="icon" href="./favicon.ico">
 
@@ -31,7 +30,6 @@
             height: 100vh;
         }
 
-        /* --- 背景图片层 --- */
         .bg-layer {
             position: absolute;
             top: 0;
@@ -49,20 +47,25 @@
             opacity: 1;
         }
 
-        /* --- 核心修改：成功 GIF 层 --- */
-        #successGif {
+        /* 成功动画容器 */
+        #animContainer {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            object-fit: cover; /* 铺满全屏 */
-            z-index: 999;      /* 最高层级 */
-            display: none;     /* 默认隐藏 */
+            z-index: 999;
+            display: none; /* 默认隐藏 */
             pointer-events: none;
         }
 
-        /* --- 选项按钮 --- */
+        /* 动图样式 */
+        #animContainer img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
         .select-btn {
             position: absolute;
             color: #fff;
@@ -83,21 +86,9 @@
             transform: scale(0.95);
         }
 
-        .btn-tissue {
-            bottom: 14%;
-            left: 8%;
-            width: 36%;
-            height: 8%;
-        }
+        .btn-tissue { bottom: 14%; left: 8%; width: 36%; height: 8%; }
+        .btn-carrot { bottom: 14%; right: 8%; width: 36%; height: 8%; }
 
-        .btn-carrot {
-            bottom: 14%;
-            right: 8%;
-            width: 36%;
-            height: 8%;
-        }
-
-        /* --- 321 倒计时 --- */
         .countdown {
             position: fixed;
             inset: 0;
@@ -113,9 +104,16 @@
             text-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
             transition: opacity 0.2s ease;
         }
+        .countdown.show { opacity: 1; }
 
-        .countdown.show {
-            opacity: 1;
+        /* 一个不可见的预加载容器 */
+        #preload-area {
+            position: absolute;
+            width: 0;
+            height: 0;
+            overflow: hidden;
+            opacity: 0;
+            z-index: -1;
         }
     </style>
 </head>
@@ -123,15 +121,13 @@
 <body>
 
     <div class="game-container">
-
-        <!-- 背景图片 -->
+        <!-- 静态背景 -->
         <img src="./image/1.png" class="bg-layer active" id="img-normal">
         <img src="./image/2.png" class="bg-layer" id="img-tissue">
         <img src="./image/3.png" class="bg-layer" id="img-carrot">
 
-        <!-- 成功动画：改为 GIF -->
-        <!-- 注意：src 留空，通过 JS 动态控制，保证每次从头播放 -->
-        <img id="successGif" src="" alt="Success">
+        <!-- 动画容器 -->
+        <div id="animContainer"></div>
 
         <!-- 按钮 -->
         <div class="select-btn btn-tissue" onclick="makeChoice('tissue')">选项1</div>
@@ -139,17 +135,18 @@
 
         <!-- 倒计时 -->
         <div id="countdown" class="countdown">3</div>
+
+        <!-- 【核心】预加载区域：网页一打开就开始下载 WebP -->
+        <div id="preload-area">
+            <!-- 请确保文件名正确，推荐用 webp -->
+            <img id="source-anim" src="./video/success.webp" alt="preload">
+        </div>
     </div>
 
     <script>
-        /* ================= 配置区 ================= */
-        // 请根据你的 gif 实际长度修改这里（单位：毫秒）
-        // 如果你的 gif 是 3 秒，就写 3000
-        const GIF_DURATION = 3000; 
-
-        // 你的 GIF 路径 (根据你的截图)
-        const GIF_PATH = './video/动画.gif';
-        /* ========================================= */
+        /* ================= 配置 ================= */
+        const ANIM_DURATION = 3500; // 动画播放时长(毫秒)
+        /* ======================================= */
 
         const els = {
             imgs: {
@@ -157,14 +154,14 @@
                 tissue: document.getElementById('img-tissue'),
                 carrot: document.getElementById('img-carrot')
             },
-            gif: document.getElementById('successGif'),
+            animContainer: document.getElementById('animContainer'),
+            sourceAnim: document.getElementById('source-anim'), // 预加载好的那个图片
             countdown: document.getElementById('countdown')
         };
 
         let correctAnswer = '';
         let isPlaying = false;
 
-        /* --- 音频系统 --- */
         const sounds = {
             tissue: new Audio('./audio/tissue.m4a'),
             carrot: new Audio('./audio/carrot.m4a'),
@@ -172,12 +169,7 @@
         };
 
         // 预加载音频
-        Object.values(sounds).forEach(s => {
-            s.preload = 'auto';
-            s.load();
-        });
-
-        /* --- 游戏逻辑 --- */
+        Object.values(sounds).forEach(s => { s.preload = 'auto'; s.load(); });
 
         function switchImage(type) {
             Object.values(els.imgs).forEach(img => img.classList.remove('active'));
@@ -190,7 +182,7 @@
             const audio = sounds[type];
             if (audio) {
                 audio.currentTime = 0;
-                audio.play().catch(e => console.log('Audio error:', e));
+                audio.play().catch(() => {});
             }
         }
 
@@ -198,7 +190,6 @@
             isPlaying = false;
             const steps = ['3', '2', '1'];
             let index = 0;
-
             function next() {
                 if (index >= steps.length) {
                     els.countdown.classList.remove('show');
@@ -207,7 +198,6 @@
                 }
                 els.countdown.textContent = steps[index];
                 els.countdown.classList.add('show');
-
                 setTimeout(() => {
                     els.countdown.classList.remove('show');
                     index++;
@@ -226,7 +216,7 @@
             });
         }
 
-        /* --- 播放成功动画 (GIF 方案) --- */
+        /* --- 极速播放 WebP 方案 --- */
         function playSuccessEffect() {
             isPlaying = false;
 
@@ -234,24 +224,28 @@
             sounds.succeed.currentTime = 0;
             sounds.succeed.play().catch(() => {});
 
-            // 2. 显示 GIF
-            // 技巧：加一个时间戳 (?t=...) 强制浏览器重新加载 GIF
-            // 这样每次都能从第一帧开始播放，而不是停在最后一帧
-            els.gif.src = GIF_PATH + '?t=' + new Date().getTime();
-            els.gif.style.display = 'block';
+            // 2. 处理动画 (核心技巧：克隆节点)
+            // 浏览器已经下载好了 sourceAnim。我们克隆它，浏览器会直接从内存取，不走网络。
+            // 克隆也是为了重置 GIF/WebP 的播放进度到第一帧。
+            els.animContainer.innerHTML = ''; // 清空
+            const newImg = els.sourceAnim.cloneNode(true);
+            newImg.removeAttribute('id'); // 移除ID防止冲突
+            els.animContainer.appendChild(newImg);
+            
+            // 3. 显示
+            els.animContainer.style.display = 'block';
 
-            // 3. 定时结束
+            // 4. 定时结束
             setTimeout(() => {
-                els.gif.style.display = 'none';
-                els.gif.src = ''; // 清空 src 释放内存
+                els.animContainer.style.display = 'none';
+                els.animContainer.innerHTML = ''; // 清理内存
                 sounds.succeed.pause();
                 startGame();
-            }, GIF_DURATION);
+            }, ANIM_DURATION);
         }
 
         function makeChoice(choice) {
             if (!isPlaying) return;
-
             switchImage(choice);
 
             if (choice === correctAnswer) {
@@ -264,8 +258,7 @@
             }
         }
 
-        /* --- 初始化 --- */
-        // 第一次点击解锁所有音频
+        /* 初始化交互解锁 */
         window.addEventListener('click', () => {
             if (sounds.tissue.currentTime === 0) {
                 Object.values(sounds).forEach(s => s.load());
@@ -273,8 +266,6 @@
         }, { once: true });
 
         startGame();
-
     </script>
 </body>
-
 </html>
